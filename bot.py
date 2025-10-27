@@ -201,9 +201,10 @@ if __name__ == "__main__":
     print("✅ Бот запущен и ждёт сообщений в Telegram...")
     loop = asyncio.get_event_loop()
     loop.create_task(set_commands())
+
+    # Flask keep-alive сервер
+    import threading
+    from server import app
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
+
     executor.start_polling(dp)
-
-import threading
-from server import app
-
-threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
