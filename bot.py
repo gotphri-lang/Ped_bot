@@ -9,6 +9,7 @@ PROGRESS_FILE = "progress.json"
 DATE_FMT = "%Y-%m-%d"
 ADMIN_ID = 288158839  # твой chat_id
 
+
 # === УТИЛИТЫ ===
 def today():
     return datetime.now().strftime(DATE_FMT)
@@ -35,7 +36,8 @@ def save_progress(progress):
 def split_text(text, limit=3500):
     return [text[i:i + limit] for i in range(0, len(text), limit)]
 
-# === МОТИВАЦИОННЫЕ ЦИТАТЫ ===
+
+# === ЦИТАТЫ ===
 QUOTES = [
     "We are what we repeatedly do. Excellence, then, is not an act, but a habit. – Aristotle",
     "Discipline equals freedom. – Jocko Willink",
@@ -55,7 +57,7 @@ ACHIEVEMENTS = {
     2: "👣 Первые шаги",
     3: "🎯 Ординатор-энтузиаст",
     5: "⚡️ Мозговая активация",
-    7: "💪 Гигант педиатр",
+    7: "💪 Гигант педиатрии",
     10: "🌊 Врач на волне",
     14: "☕️ Доктор без выходных",
     21: "🩺 Стабильность – признак профи",
@@ -72,6 +74,7 @@ with open("questions.json", encoding="utf-8") as f:
     questions = json.load(f)
 Q_BY_ID = {int(q["id"]): q for q in questions}
 TOPICS = sorted(set(q["topic"] for q in questions))
+
 
 # === СТАРТ ===
 @dp.message_handler(commands=["start"])
@@ -99,6 +102,7 @@ async def start(message: types.Message):
         reply_markup=kb
     )
 
+
 # === HELP ===
 @dp.message_handler(commands=["help"])
 async def help_cmd(message: types.Message):
@@ -107,11 +111,11 @@ async def help_cmd(message: types.Message):
         "/train – выбрать тему\n"
         "/review – повтор карточек на сегодня\n"
         "/stats – статистика и прогресс\n"
-        "/leaderboard – рейтинг пользователей\n"
         "/goal N – установить цель (например, /goal 20)\n"
         "/reset_topic – сброс темы\n"
         "/reset – полный сброс\n"
     )
+
 
 # === УСТАНОВКА ЦЕЛИ ===
 @dp.message_handler(commands=["goal"])
@@ -125,6 +129,7 @@ async def set_goal(message: types.Message):
     udata["goal_per_day"] = goal
     save_progress(progress)
     await message.answer(f"🎯 Новая ежедневная цель: {goal} карточек.")
+
 
 # === ТРЕНИРОВКА ===
 @dp.message_handler(commands=["train"])
@@ -140,16 +145,14 @@ async def train_topic(callback_query: types.CallbackQuery):
     topic = callback_query.data.split("train_")[1]
     uid = str(callback_query.from_user.id)
     questions_in_topic = [q for q in questions if q["topic"] == topic]
-
     if not questions_in_topic:
         await bot.send_message(uid, f"❌ В теме «{topic}» пока нет вопросов.")
         return
-
     q = random.choice(questions_in_topic)
     await send_question_text(uid, q)
 
 
-# === ВОПРОСЫ И ОТВЕТЫ ===
+# === ВОПРОСЫ ===
 async def send_question_text(chat_id, q):
     qid = int(q["id"])
     text = f"🧠 {q.get('topic', 'Вопрос')}\n\n{q['question']}\n\n" + "\n".join(
@@ -162,13 +165,27 @@ async def send_question_text(chat_id, q):
     await bot.send_message(chat_id, text, reply_markup=kb)
 
 
-# === КНОПКА "Далее" ===
+# === "Далее" ===
 @dp.callback_query_handler(lambda c: c.data == "next")
 async def next_card(callback_query: types.CallbackQuery):
     await callback_query.answer()
     uid = str(callback_query.from_user.id)
     uname = progress.get(uid, {}).get("name", "Без имени")
     await bot.send_message(uid, f"💪 Отлично, {uname}! Выбери /train или /review, чтобы продолжить.")
+
+
+# === УСТАНОВКА КОМАНД ===
+async def set_commands():
+    cmds = [
+        types.BotCommand("start", "Начать заново"),
+        types.BotCommand("help", "Помощь"),
+        types.BotCommand("train", "Выбор темы"),
+        types.BotCommand("review", "Повтор"),
+        types.BotCommand("stats", "Статистика"),
+        types.BotCommand("goal", "Цель на день"),
+        types.BotCommand("reset", "Сброс")
+    ]
+    await bot.set_my_commands(cmds)
 
 
 # === ЗАПУСК ===
