@@ -134,17 +134,20 @@ async def choose_topic(message: types.Message):
         kb.insert(types.InlineKeyboardButton(t, callback_data=f"train_{t}"))
     await message.answer("🎯 Выбери тему для тренировки:", reply_markup=kb)
 
-# === ПОВТОР ===
-@dp.message_handler(commands=["review"])
-async def review_today(message: types.Message):
-    uid = str(message.chat.id)
-    udata = progress.get(uid, {"cards": {}})
-    due = [int(qid) for qid, info in udata.get("cards", {}).items() if is_due(info.get("next_review"))]
-    if not due:
-        return await message.answer("✅ На сегодня нет карточек к повтору.")
-    await message.answer(f"📘 Сегодня к повтору {len(due)} карточек.")
-    qid = random.choice(due)
-    await send_question_text(uid, Q_BY_ID[qid])
+@dp.callback_query_handler(lambda c: c.data.startswith("train_"))
+async def train_topic(callback_query: types.CallbackQuery):
+    await callback_query.answer()
+    topic = callback_query.data.split("train_")[1]
+    uid = str(callback_query.from_user.id)
+    questions_in_topic = [q for q in questions if q["topic"] == topic]
+
+    if not questions_in_topic:
+        await bot.send_message(uid, f"❌ В теме «{topic}» пока нет вопросов.")
+        return
+
+    q = random.choice(questions_in_topic)
+    await send_question_text(uid, q)
+
 
 # === ВОПРОСЫ И ОТВЕТЫ ===
 async def send_question_text(chat_id, q):
@@ -156,45 +159,17 @@ async def send_question_text(chat_id, q):
     for i in range(len(q["options"])):
         kb.insert(types.InlineKeyboardButton(str(i + 1), callback_data=f"a:{qid}:{i+1}"))
     kb.add(types.InlineKeyboardButton("⏭ Далее", callback_data="next"))
-    for part in split_text(text):
-        await bot.send_message(chat_id, part, reply_markup=kb)
+    await bot.send_message(chat_id, text, reply_markup=kb)
 
-# === СТАТИСТИКА ===
-@dp.message_handler(commands=["stats"])
-async def stats(message: types.Message):
-    uid = str(message.chat.id)
-    u = progress.get(uid, {"cards": {}, "topics": {}, "streak": 0, "goal_per_day": 10, "done_today": 0})
-    streak = u.get("streak", 0)
-    goal = u.get("goal_per_day", 10)
-    done = u.get("done_today", 0)
-    total = len(u.get("cards", {}))
-    due = sum(1 for c in u["cards"].values() if is_due(c.get("next_review")))
-    accuracy = 0
-    total_correct = sum(t["correct"] for t in u.get("topics", {}).values())
-    total_answers = sum(t["total"] for t in u.get("topics", {}).values())
-    if total_answers:
-        accuracy = round(total_correct / total_answers * 100)
-    await message.answer(
-        f"🎯 Цель: {goal} карточек в день\n"
-        f"📊 Сегодня: {done}/{goal}\n"
-        f"🔥 Серия: {streak} дн.\n"
-        f"📘 Всего карточек: {total}\n"
-        f"📅 К повтору: {due}\n"
-        f"💯 Точность ответов: {accuracy}%"
-    )
 
-# === УСТАНОВКА КОМАНД ===
-async def set_commands():
-    cmds = [
-        types.BotCommand("start", "Начать заново"),
-        types.BotCommand("help", "Помощь"),
-        types.BotCommand("train", "Выбор темы"),
-        types.BotCommand("review", "Повтор"),
-        types.BotCommand("stats", "Статистика"),
-        types.BotCommand("goal", "Цель на день"),
-        types.BotCommand("reset", "Сброс")
-    ]
-    await bot.set_my_commands(cmds)
+# === КНОПКА "Далее" ===
+@dp.callback_query_handler(lambda c: c.data == "next")
+async def next_card(callback_query: types.CallbackQuery):
+    await callback_query.answer()
+    uid = str(callback_query.from_user.id)
+    uname = progress.get(uid, {}).get("name", "Без имени")
+    await bot.send_message(uid, f"💪 Отлично, {uname}! Выбери /train или /review, чтобы продолжить.")
+
 
 # === ЗАПУСК ===
 if __name__ == "__main__":
