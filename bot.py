@@ -372,4 +372,4 @@ if __name__ == "__main__":
     # ставим команды и запускаем polling
     loop = asyncio.get_event_loop()
     loop.create_task(set_commands())
-    executor.start_polling(dp, skip_updates=True)
+    executor.start_polling(dp, skip_updates=True)# force reload
