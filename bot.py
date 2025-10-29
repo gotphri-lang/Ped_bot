@@ -373,7 +373,6 @@ async def set_commands():
         types.BotCommand("review", "Повтор на сегодня"),
         types.BotCommand("stats", "Статистика"),
         types.BotCommand("goal", "Цель на день"),
-        types.BotCommand("users", "Количество пользователей (админ)"),
         types.BotCommand("reset_topic", "Сброс темы"),
         types.BotCommand("reset", "Полный сброс"),
     ]
