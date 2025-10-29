@@ -51,6 +51,7 @@ with open("questions.json", encoding="utf-8") as f:
 
 Q_BY_ID = {int(q["id"]): q for q in questions}
 TOPICS = sorted(set(q["topic"] for q in questions))
+TOPIC_MAP = {i: t for i, t in enumerate(TOPICS)}  # безопасные короткие индексы
 
 # ======================
 # ВСПОМОГАТЕЛЬНОЕ
@@ -58,8 +59,8 @@ TOPICS = sorted(set(q["topic"] for q in questions))
 def get_user(uid: str, name_hint="Без имени"):
     u = progress.setdefault(uid, {
         "name": name_hint,
-        "cards": {},           # "qid_str": {"interval": int, "next_review": "YYYY-MM-DD"}
-        "topics": {},          # "topic": {"correct": int, "total": int}
+        "cards": {},
+        "topics": {},
         "streak": 0,
         "last_goal_day": None,
         "last_review": None,
@@ -67,7 +68,6 @@ def get_user(uid: str, name_hint="Без имени"):
         "done_today": 0,
         "last_day": today_str()
     })
-    # сброс done_today при смене даты
     if u.get("last_day") != today_str():
         u["done_today"] = 0
         u["last_day"] = today_str()
@@ -78,7 +78,7 @@ async def send_question(chat_id: int, topic_filter: str = None):
     u = get_user(uid)
     cards = u.get("cards", {})
 
-    # 1) К повтору
+    # 1️⃣ карточки к повтору
     due_ids = []
     for qid_str, meta in cards.items():
         if is_due(meta.get("next_review")):
@@ -91,7 +91,7 @@ async def send_question(chat_id: int, topic_filter: str = None):
         qid = random.choice(due_ids)
         return await send_question_text(chat_id, Q_BY_ID[qid])
 
-    # 2) Новые
+    # 2️⃣ новые вопросы
     done_ids = {int(k) for k in cards.keys()}
     pool = [q for q in questions if int(q["id"]) not in done_ids]
     if topic_filter:
@@ -116,7 +116,6 @@ async def send_question_text(chat_id: int, q: dict):
     await bot.send_message(chat_id, text, reply_markup=kb)
 
 def update_interval(card: dict, correct: bool):
-    # Простая SM-логика: удвоение интервала при верном ответе, сброс на 1 при ошибке
     if correct:
         card["interval"] = min(max(1, card.get("interval", 1)) * 2, 60)
         next_day = datetime.now() + timedelta(days=card["interval"])
@@ -141,8 +140,8 @@ async def start(message: types.Message):
         f"👋 Привет, {uname}!\n"
         "Этот бот учит педиатрию с интервальным повторением.\n\n"
         "💡 Ошибки повторяются завтра, верные ответы — через 2, 4, 8 и т.д. дней.\n"
-        "🎯 Ежедневная цель по умолчанию: 10 карточек (измени через /goal 15)\n\n"
-        "💬 We are what we repeatedly do. Excellence, then, is not an act, but a habit.\n\n"
+        "🎯 Ежедневная цель по умолчанию: 10 карточек.\n\n"
+        "💬 We are what we repeatedly do.\n\n"
         "Смотри /help.",
         reply_markup=kb
     )
@@ -157,8 +156,8 @@ async def help_cmd(message: types.Message):
         "/train — выбрать тему\n"
         "/review — повтор карточек на сегодня\n"
         "/stats — статистика\n"
-        "/goal N — цель на день (напр. /goal 20)\n"
-        "/reset_topic — сброс прогресса по теме\n"
+        "/goal N — цель на день\n"
+        "/reset_topic — сброс темы\n"
         "/reset — полный сброс\n"
     )
 
@@ -178,22 +177,26 @@ async def set_goal(message: types.Message):
     await message.answer(f"🎯 Новая ежедневная цель: {u['goal_per_day']}.")
 
 # ======================
-# /train
+# /train (исправленная)
 # ======================
 @dp.message_handler(commands=["train"])
 async def choose_topic(message: types.Message):
     if not TOPICS:
         return await message.answer("Пока нет тем.")
     kb = types.InlineKeyboardMarkup(row_width=2)
-    for t in TOPICS:
-        kb.insert(types.InlineKeyboardButton(t, callback_data=f"train_{t}"))
+    for idx, t in enumerate(TOPICS):
+        kb.insert(types.InlineKeyboardButton(t, callback_data=f"train_{idx}"))
     await message.answer("🎯 Выбери тему для тренировки:", reply_markup=kb)
 
 @dp.callback_query_handler(lambda c: c.data.startswith("train_"))
 async def train_topic(callback_query: types.CallbackQuery):
     await callback_query.answer()
-    topic = callback_query.data.replace("train_", "", 1)
-    uid = str(callback_query.from_user.id)
+    try:
+        idx = int(callback_query.data.replace("train_", "", 1))
+        topic = TOPIC_MAP[idx]
+    except Exception:
+        await bot.send_message(callback_query.from_user.id, "⚠️ Ошибка выбора темы.")
+        return
     await bot.send_message(callback_query.from_user.id, f"📚 Тема: {topic}")
     await send_question(callback_query.from_user.id, topic_filter=topic)
 
@@ -212,7 +215,7 @@ async def review_today(message: types.Message):
     await send_question_text(message.chat.id, Q_BY_ID[qid])
 
 # ======================
-# Ответы на варианты и «Далее»
+# Ответы
 # ======================
 @dp.callback_query_handler(lambda c: c.data == "next")
 async def next_card(callback_query: types.CallbackQuery):
@@ -225,7 +228,6 @@ async def handle_answer(callback_query: types.CallbackQuery):
     uid = str(callback_query.from_user.id)
     u = get_user(uid)
 
-    # парсинг "a:<qid>:<optnum>"
     try:
         _, qid_str, opt_str = callback_query.data.split(":")
         qid = int(qid_str)
@@ -239,20 +241,17 @@ async def handle_answer(callback_query: types.CallbackQuery):
 
     correct = (chosen_idx == q["correct_index"])
 
-    # обновляем карточку
     cards = u.setdefault("cards", {})
     card = cards.get(qid_str, {"interval": 1, "next_review": today_str()})
     card = update_interval(card, correct)
     cards[qid_str] = card
 
-    # топики
     topic = q.get("topic", "Без темы")
     tdata = u.setdefault("topics", {}).setdefault(topic, {"correct": 0, "total": 0})
     tdata["total"] += 1
     if correct:
         tdata["correct"] += 1
 
-    # дневная цель / streak
     u["last_review"] = today_str()
     if u.get("last_day") != today_str():
         u["done_today"] = 0
@@ -308,14 +307,20 @@ async def reset_topic(message: types.Message):
     if not TOPICS:
         return await message.answer("Пока нет тем.")
     kb = types.InlineKeyboardMarkup(row_width=2)
-    for t in TOPICS:
-        kb.insert(types.InlineKeyboardButton(t, callback_data=f"reset_{t}"))
+    for idx, t in enumerate(TOPICS):
+        kb.insert(types.InlineKeyboardButton(t, callback_data=f"reset_{idx}"))
     await message.answer("Выбери тему для сброса:", reply_markup=kb)
 
 @dp.callback_query_handler(lambda c: c.data.startswith("reset_"))
 async def do_reset_topic(callback_query: types.CallbackQuery):
     await callback_query.answer()
-    topic = callback_query.data.replace("reset_", "", 1)
+    try:
+        idx = int(callback_query.data.replace("reset_", "", 1))
+        topic = TOPIC_MAP[idx]
+    except Exception:
+        await bot.send_message(callback_query.from_user.id, "⚠️ Ошибка выбора темы.")
+        return
+
     uid = str(callback_query.from_user.id)
     u = get_user(uid)
     to_del = [qid for qid, obj in Q_BY_ID.items() if obj.get("topic") == topic]
@@ -343,7 +348,7 @@ async def reset_all(message: types.Message):
     await message.answer("🔄 Полный сброс. Начинай с /start или /train.")
 
 # ======================
-# Установка команд в меню
+# Установка команд
 # ======================
 async def set_commands():
     cmds = [
@@ -364,12 +369,10 @@ async def set_commands():
 if __name__ == "__main__":
     print("✅ Бот запущен и ждёт сообщений в Telegram...")
 
-    # поднимаем Flask keep-alive на 10000 порту
     import threading
     from server import app
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000), daemon=True).start()
 
-    # ставим команды и запускаем polling
     loop = asyncio.get_event_loop()
     loop.create_task(set_commands())
-    executor.start_polling(dp, skip_updates=True)# force reload
+    executor.start_polling(dp, skip_updates=True)
