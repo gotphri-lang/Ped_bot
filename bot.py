@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 # ======================
 # НАСТРОЙКА
 # ======================
-BOT_TOKEN = "8242848619:AAF-hYX8z1oWNrNLqgvqEKGefBaJtZ7qB0I"  # вставлен прямой токен
+BOT_TOKEN = "8242848619:AAF-hYX8z1oWNrNLqgvqEKGefBaJtZ7qB0I"
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
 
@@ -79,7 +79,6 @@ async def send_question(chat_id: int, topic_filter: str = None):
     u = get_user(uid)
     cards = u.get("cards", {})
 
-    # карточки к повтору
     due_ids = []
     for qid_str, meta in cards.items():
         if is_due(meta.get("next_review")):
@@ -92,7 +91,6 @@ async def send_question(chat_id: int, topic_filter: str = None):
         qid = random.choice(due_ids)
         return await send_question_text(chat_id, Q_BY_ID[qid])
 
-    # новые вопросы
     done_ids = {int(k) for k in cards.keys()}
     pool = [q for q in questions if int(q["id"]) not in done_ids]
     if topic_filter:
@@ -161,6 +159,7 @@ async def help_cmd(message: types.Message):
         "/goal N — цель на день\n"
         "/reset_topic — сброс темы\n"
         "/reset — полный сброс\n"
+        "/users — количество пользователей (только для администратора)"
     )
 
 # ======================
@@ -302,6 +301,20 @@ async def stats(message: types.Message):
     await message.answer(msg)
 
 # ======================
+# /users — количество пользователей (только для администратора)
+# ======================
+@dp.message_handler(commands=["users"])
+async def users_count(message: types.Message):
+    uid = str(message.chat.id)
+    if uid != str(ADMIN_ID):
+        return await message.answer("⛔ Команда только для администратора.")
+    try:
+        count = len(progress.keys())
+        await message.answer(f"👥 Всего пользователей: {count}")
+    except Exception as e:
+        await message.answer(f"⚠️ Ошибка: {e}")
+
+# ======================
 # /reset_topic и /reset
 # ======================
 @dp.message_handler(commands=["reset_topic"])
@@ -360,6 +373,7 @@ async def set_commands():
         types.BotCommand("review", "Повтор на сегодня"),
         types.BotCommand("stats", "Статистика"),
         types.BotCommand("goal", "Цель на день"),
+        types.BotCommand("users", "Количество пользователей (админ)"),
         types.BotCommand("reset_topic", "Сброс темы"),
         types.BotCommand("reset", "Полный сброс"),
     ]
