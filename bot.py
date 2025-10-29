@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 # ======================
 # НАСТРОЙКА
 # ======================
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # в Render добавить в Environment Variables
+BOT_TOKEN = "8242848619:AAF-hYX8z1oWNrNLqgvqEKGefBaJtZ7qB0I"  # вставлен прямой токен
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
 
@@ -52,7 +52,7 @@ with open("questions.json", encoding="utf-8") as f:
 Q_BY_ID = {int(q["id"]): q for q in questions}
 TOPICS = sorted(set(q["topic"] for q in questions))
 TOPIC_MAP = {i: t for i, t in enumerate(TOPICS)}
-TOTAL_QUESTIONS = len(questions)  # 👈 добавлено: общее количество вопросов
+TOTAL_QUESTIONS = len(questions)
 
 # ======================
 # ВСПОМОГАТЕЛЬНОЕ
@@ -79,6 +79,7 @@ async def send_question(chat_id: int, topic_filter: str = None):
     u = get_user(uid)
     cards = u.get("cards", {})
 
+    # карточки к повтору
     due_ids = []
     for qid_str, meta in cards.items():
         if is_due(meta.get("next_review")):
@@ -91,6 +92,7 @@ async def send_question(chat_id: int, topic_filter: str = None):
         qid = random.choice(due_ids)
         return await send_question_text(chat_id, Q_BY_ID[qid])
 
+    # новые вопросы
     done_ids = {int(k) for k in cards.keys()}
     pool = [q for q in questions if int(q["id"]) not in done_ids]
     if topic_filter:
@@ -140,7 +142,7 @@ async def start(message: types.Message):
         "Этот бот учит педиатрию с интервальным повторением.\n\n"
         "💡 Ошибки повторяются завтра, верные ответы — через 2, 4, 8 и т.д. дней.\n"
         "🎯 Ежедневная цель по умолчанию: 10 карточек.\n\n"
-        f"📚 Всего доступно вопросов: {TOTAL_QUESTIONS}.\n\n"  # 👈 добавлено
+        f"📚 Всего доступно вопросов: {TOTAL_QUESTIONS}.\n\n"
         "💬 We are what we repeatedly do.\n\n"
         "Смотри /help.",
         reply_markup=kb
